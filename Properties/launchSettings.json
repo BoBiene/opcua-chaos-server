@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "opcua-chaos-server": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

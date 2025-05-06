@@ -8,9 +8,9 @@ namespace opcua.chaos.server
 {
     public class ChaosOptions
     {
-        public ChaosMode Mode { get; set; } = ChaosMode.Default;
+        public ChaosMode Mode { get; set; } = ChaosMode.CloseSession;
         public int IntervalSeconds { get; set; } = 5;
-        public double Probability { get; set; } = 0.5;
+        public double Probability { get; set; } = 0.4;
         public int StaticItems { get; set; } = 2;
         public int DynamicItems { get; set; } = 3;
     }

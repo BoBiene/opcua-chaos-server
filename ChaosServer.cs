@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using Opc.Ua;
 using Opc.Ua.Server;
+using Org.BouncyCastle.Asn1.X509;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -44,7 +45,9 @@ namespace opcua.chaos.server
 
             _chaosTimer = new Timer(_ =>
             {
-                var sessions = ServerInternal.SessionManager.GetSessions();
+                var sessions = ReflectionHelper.GetPrivateMember<NodeIdDictionary<Session>>(ServerInternal.SessionManager, "m_sessions");
+
+                //var sessions = ServerInternal.SessionManager.GetSessions();
                 if (sessions == null || sessions.Count == 0)
                 {
                     _logger.LogInformation("[CHAOS] Keine Sessions aktiv.");
@@ -53,41 +56,55 @@ namespace opcua.chaos.server
 
                 _logger.LogInformation("[CHAOS] Aktive Sessions: {Count}", sessions.Count);
 
-                foreach (var session in sessions)
+                foreach (var keyValuePair in sessions)
                 {
-                    var subs = ServerInternal.SubscriptionManager.GetSubscriptions()
-                        .Where(s => s.Session == session).ToList();
-                    if (subs.Count == 0) continue;
-
-                    foreach (var target in subs)
+                    var session = keyValuePair.Value;
+                    if (_options.Mode == ChaosMode.CloseSession)
                     {
                         if (_rng.NextDouble() >= _options.Probability) continue;
+                        session.Dispose();
 
-                        var context = new OperationContext(new RequestHeader(), RequestType.Unknown, session);
+                        sessions.Remove(keyValuePair.Key);
+                        
+                        _logger.LogWarning("[CHAOS][{Mode}] Session {SessionId} removed.",
+                                            _options.Mode, session.Id);
+                    }
+                    else
+                    {
+                        var subs = ServerInternal.SubscriptionManager.GetSubscriptions()
+                            .Where(s => s.Session == session).ToList();
+                        if (subs.Count == 0) continue;
 
-                        switch (_options.Mode)
+                        foreach (var target in subs)
                         {
-                            case ChaosMode.Default:
-                            case ChaosMode.ClearItems:
-                                target.GetMonitoredItems(out var serverHandles, out var _);
-                                if (serverHandles.Length > 0)
-                                {
-                                    target.DeleteMonitoredItems(context, new UInt32Collection(serverHandles), out var _, out var _);
-                                    target.SessionClosed();
-                                    _logger.LogWarning("[CHAOS][{Mode}] {Count} MonitoredItems in Subscription {Id} gelöscht.",
-                                        _options.Mode, serverHandles.Length, target.Id);
-                                }
-                                break;
+                            if (_rng.NextDouble() >= _options.Probability) continue;
 
-                            case ChaosMode.RemoveSubscription:
-                                ServerInternal.SubscriptionManager.DeleteSubscription(context, target.Id);
-                               _logger.LogWarning("[CHAOS][RemoveSubscription] Subscription {Id} gelöscht.", target.Id);
-                                break;
+                            var context = new OperationContext(new RequestHeader(), RequestType.Unknown, session);
 
-                            case ChaosMode.BreakEngine:
-                                target.SetPublishingMode(context, false);
-                                _logger.LogWarning("[CHAOS][BreakEngine] Publishing für Subscription {Id} deaktiviert.", target.Id);
-                                break;
+                            switch (_options.Mode)
+                            {
+
+                                case ChaosMode.ClearItems:
+                                    target.GetMonitoredItems(out var serverHandles, out var _);
+                                    if (serverHandles.Length > 0)
+                                    {
+                                        target.DeleteMonitoredItems(context, new UInt32Collection(serverHandles), out var _, out var _);
+                                        target.SessionClosed();
+                                        _logger.LogWarning("[CHAOS][{Mode}] {Count} MonitoredItems in Subscription {Id} gelöscht.",
+                                            _options.Mode, serverHandles.Length, target.Id);
+                                    }
+                                    break;
+
+                                case ChaosMode.RemoveSubscription:
+                                    ServerInternal.SubscriptionManager.DeleteSubscription(context, target.Id);
+                                    _logger.LogWarning("[CHAOS][RemoveSubscription] Subscription {Id} gelöscht.", target.Id);
+                                    break;
+
+                                case ChaosMode.BreakEngine:
+                                    target.SetPublishingMode(context, false);
+                                    _logger.LogWarning("[CHAOS][BreakEngine] Publishing für Subscription {Id} deaktiviert.", target.Id);
+                                    break;
+                            }
                         }
                     }
                 }

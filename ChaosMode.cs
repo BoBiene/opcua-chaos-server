@@ -14,11 +14,6 @@ namespace opcua.chaos.server
         None,
 
         /// <summary>
-        /// Clears monitored items and breaks the publish engine (combined effects).
-        /// </summary>
-        Default,
-
-        /// <summary>
         /// Clears all monitored items in a subscription.
         /// </summary>
         ClearItems,
@@ -27,6 +22,8 @@ namespace opcua.chaos.server
         /// Sets the subscription's publish engine to null.
         /// </summary>
         BreakEngine,
+
+        CloseSession,
 
         /// <summary>
         /// Removes the subscription from the session completely.
