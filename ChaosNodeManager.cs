@@ -11,15 +11,29 @@ namespace opcua.chaos.server
         private readonly ILogger _logger;
         private readonly ChaosOptions _options;
         private readonly List<BaseDataVariableState> _dynamicVariables = new();
+        private readonly Func<NodeIdDictionary<Session>> _getSessionsDict;
         private readonly Random _rng = new();
         private Timer? _updateTimer;
 
-        public ChaosNodeManager(IServerInternal server, ApplicationConfiguration configuration, ILogger logger, ChaosOptions options)
+        public ChaosNodeManager(IServerInternal server, ApplicationConfiguration configuration, ILogger logger, ChaosOptions options, Func<NodeIdDictionary<Session>> getSessionsDict)
             : base(server, configuration, "http://malicious.opcua")
         {
             SystemContext.NodeIdFactory = this;
             _logger = logger;
             _options = options;
+            _getSessionsDict = getSessionsDict;
+        }
+
+        protected override ServiceResult CreateMonitoredItem(ServerSystemContext context, NodeHandle handle, uint subscriptionId, double publishingInterval, DiagnosticsMasks diagnosticsMasks, TimestampsToReturn timestampsToReturn, MonitoredItemCreateRequest itemToCreate, bool createDurable, ref long globalIdCounter, out MonitoringFilterResult filterResult, out IMonitoredItem monitoredItem)
+        {
+            var sessions = _getSessionsDict();
+            return base.CreateMonitoredItem(context, handle, subscriptionId, publishingInterval, diagnosticsMasks, timestampsToReturn, itemToCreate, createDurable, ref globalIdCounter, out filterResult, out monitoredItem);
+        }
+
+        public override void CreateMonitoredItems(OperationContext context, uint subscriptionId, double publishingInterval, TimestampsToReturn timestampsToReturn, IList<MonitoredItemCreateRequest> itemsToCreate, IList<ServiceResult> errors, IList<MonitoringFilterResult> filterErrors, IList<IMonitoredItem> monitoredItems, bool createDurable, ref long globalIdCounter)
+        {
+            var sessions = _getSessionsDict();
+            base.CreateMonitoredItems(context, subscriptionId, publishingInterval, timestampsToReturn, itemsToCreate, errors, filterErrors, monitoredItems, createDurable, ref globalIdCounter);
         }
 
         protected override NodeStateCollection LoadPredefinedNodes(ISystemContext context)
@@ -38,7 +52,7 @@ namespace opcua.chaos.server
             };
 
             folder.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
-            AddPredefinedNode(SystemContext, folder);
+            
 
             for (int i = 0; i < _options.StaticItems; i++)
             {
@@ -67,6 +81,8 @@ namespace opcua.chaos.server
             }
 
             nodes.Add(folder);
+
+            AddPredefinedNode(SystemContext, folder);
             return nodes;
         }
 

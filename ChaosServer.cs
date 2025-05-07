@@ -26,14 +26,44 @@ namespace opcua.chaos.server
             _options = options.Value;
         }
 
+        protected override SubscriptionManager CreateSubscriptionManager(IServerInternal server, ApplicationConfiguration configuration)
+        {
+            return new ChaosSubscriptionManager(this, server, configuration, _loggerFactory.CreateLogger<ChaosSubscriptionManager>());
+        }
+
+
         protected override MasterNodeManager CreateMasterNodeManager(IServerInternal server, ApplicationConfiguration configuration)
         {
             _logger.LogInformation("[INIT] Erstelle NodeManager...");
+
             var nodeManagers = new List<INodeManager> {
-                new ChaosNodeManager(server, configuration, _loggerFactory.CreateLogger<ChaosNodeManager>(), _options)
+                new ChaosNodeManager(server, configuration, _loggerFactory.CreateLogger<ChaosNodeManager>(), _options,GetSessionDictionary)
             };
-            return new MasterNodeManager(server, configuration, null, nodeManagers.ToArray());
+            return new ChaosMasterNodeManager(this, server, configuration, null, nodeManagers.ToArray());
         }
+
+        protected override SessionManager CreateSessionManager(IServerInternal server, ApplicationConfiguration configuration)
+        {
+            return new ChaosSessionManager(this, server, configuration);
+        }
+
+        public NodeIdDictionary<Session> GetSessionDictionary()
+            => ReflectionHelper.GetPrivateMember<NodeIdDictionary<Session>>(ServerInternal.SessionManager, "m_sessions");
+        public bool DestroySession(Session session)
+        {
+            var sessions = GetSessionDictionary();
+
+            foreach (var kvp in sessions)
+            {
+                if (kvp.Value == session)
+                {
+                    sessions.Remove(kvp.Key);
+                    return true;
+                }
+            }
+            return false;
+        }
+
 
         public void StartChaos()
         {
@@ -47,7 +77,6 @@ namespace opcua.chaos.server
             {
                 var sessions = ReflectionHelper.GetPrivateMember<NodeIdDictionary<Session>>(ServerInternal.SessionManager, "m_sessions");
 
-                //var sessions = ServerInternal.SessionManager.GetSessions();
                 if (sessions == null || sessions.Count == 0)
                 {
                     _logger.LogInformation("[CHAOS] Keine Sessions aktiv.");
@@ -65,7 +94,7 @@ namespace opcua.chaos.server
                         session.Dispose();
 
                         sessions.Remove(keyValuePair.Key);
-                        
+
                         _logger.LogWarning("[CHAOS][{Mode}] Session {SessionId} removed.",
                                             _options.Mode, session.Id);
                     }
@@ -111,6 +140,24 @@ namespace opcua.chaos.server
             }, null, TimeSpan.FromSeconds(_options.IntervalSeconds), TimeSpan.FromSeconds(_options.IntervalSeconds));
         }
 
+        protected override void ValidateRequest(RequestHeader requestHeader)
+        {
+            base.ValidateRequest(requestHeader);
+        }
+
+        protected override OperationContext ValidateRequest(RequestHeader requestHeader, RequestType requestType)
+        {
+            if(requestType == RequestType.CreateMonitoredItems)
+            {
+                var session = GetSessionDictionary().FirstOrDefault(s => s.Value.Id == requestHeader.AuthenticationToken);
+                if (session.Value != null)
+                {
+                    _logger.LogWarning("[CHAOS] Session {SessionId} versucht, MonitoredItems zu erstellen.", session.Key);
+                    DestroySession(session.Value);
+                }
+            }
+            return base.ValidateRequest(requestHeader, requestType);
+        }
 
 
         public Task StopAsync()

@@ -15,7 +15,7 @@ namespace opcua.chaos.server
             Type type = owner.GetType();
 
             // Try to get the private field (non-public instance)
-            FieldInfo field = type.GetField(memberName, BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo field = GetFieldIncludingBase(type, memberName);
             if (field == null)
             {
                 throw new InvalidOperationException($"Field '{memberName}' not found on type '{type.FullName}'.");
@@ -24,6 +24,20 @@ namespace opcua.chaos.server
             // Get the value and cast it
             return (T)field.GetValue(owner);
         }
+
+        private static FieldInfo GetFieldIncludingBase(Type type, string fieldName)
+        {
+            while (type != null)
+            {
+                var field = type.GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (field != null)
+                    return field;
+
+                type = type.BaseType;
+            }
+            return null;
+        }
+
     }
 
 }
