@@ -3,6 +3,7 @@ using Opc.Ua;
 using Opc.Ua.Server;
 using System;
 using System.Collections.Generic;
+using System.Xml.Linq;
 
 namespace opcua.chaos.server
 {
@@ -54,6 +55,9 @@ namespace opcua.chaos.server
             folder.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
             
 
+            var modeNode = AddModeNode(folder);
+            folder.AddChild(modeNode);
+
             for (int i = 0; i < _options.StaticItems; i++)
             {
                 var variable = CreateVariable(folder, i, isDynamic: false);
@@ -84,6 +88,53 @@ namespace opcua.chaos.server
 
             AddPredefinedNode(SystemContext, folder);
             return nodes;
+        }
+
+        private BaseDataVariableState AddModeNode(FolderState folder)
+        {
+            string name = "ChaosMode";
+            return new BaseDataVariableState(folder)
+            {
+                NodeId = new NodeId(name, NamespaceIndex),
+                BrowseName = new QualifiedName(name, NamespaceIndex),
+                DisplayName = name,
+                DataType = DataTypeIds.UInt16,
+                ValueRank = ValueRanks.Scalar,
+                AccessLevel = AccessLevels.CurrentRead | AccessLevels.CurrentWrite,
+                UserAccessLevel = AccessLevels.CurrentRead | AccessLevels.CurrentWrite,
+                Value = (ushort)_options.Mode,
+                OnSimpleWriteValue = OnWriteModeNode
+            };
+        }
+
+        private ServiceResult OnWriteModeNode(ISystemContext context, NodeState node, ref object value)
+        {
+            ushort mode;
+
+            try
+            {
+                mode = Convert.ToUInt16(value);
+            }
+            catch (InvalidCastException)
+            {
+                return ServiceResult.Create(StatusCodes.BadTypeMismatch, translation: null);
+            }
+            catch (OverflowException)
+            {
+                return ServiceResult.Create(StatusCodes.BadTypeMismatch, translation: null);
+            }
+            catch (FormatException)
+            {
+                return ServiceResult.Create(StatusCodes.BadTypeMismatch, translation: null);
+            }
+            catch
+            {
+                return ServiceResult.Create(StatusCodes.Bad, translation: null);
+            }
+
+            _options.Mode = (ChaosMode)mode;
+            _logger.LogInformation("[CHAOS] Chaos-Modus geändert: {Mode}", mode);
+            return ServiceResult.Good;
         }
 
         private BaseDataVariableState CreateVariable(NodeState parent, int index, bool isDynamic)
